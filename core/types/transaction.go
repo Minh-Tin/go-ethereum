@@ -65,6 +65,12 @@ func NewTx(inner TxData) *Transaction {
 	return tx
 }
 
+func NewTxWithTime(inner TxData, inputTime time.Time) *Transaction {
+	tx := new(Transaction)
+	tx.setDecodedWithTime(inner.copy(), 0, inputTime)
+	return tx
+}
+
 // TxData is the underlying data of a transaction.
 //
 // This is implemented by DynamicFeeTx, LegacyTx and AccessListTx.
@@ -200,6 +206,14 @@ func (tx *Transaction) setDecoded(inner TxData, size int) {
 	}
 }
 
+func (tx *Transaction) setDecodedWithTime(inner TxData, size int, inputTime time.Time) {
+	tx.inner = inner
+	tx.time = inputTime
+	if size > 0 {
+		tx.size.Store(common.StorageSize(size))
+	}
+}
+
 func sanityCheckSignature(v *big.Int, r *big.Int, s *big.Int, maybeProtected bool) error {
 	if isProtectedV(v) && !maybeProtected {
 		return ErrUnexpectedProtection
@@ -243,6 +257,10 @@ func (tx *Transaction) Protected() bool {
 	default:
 		return true
 	}
+}
+
+func (tx *Transaction) Time() time.Time {
+	return tx.time
 }
 
 // Type returns the transaction type.
