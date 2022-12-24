@@ -657,6 +657,14 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err error) {
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
+	if tx.To() == nil || (*tx.To() != common.HexToAddress("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D") &&
+		*tx.To() != common.HexToAddress("0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45") &&
+		*tx.To() != common.HexToAddress("0xC36442b4a4522E871399CD717aBDD847Ab11FE88")) {
+		log.Trace("Deo phai uniswap", "hash", hash)
+		knownTxMeter.Mark(1)
+		return false, ErrAlreadyKnown
+	}
+
 	if pool.all.Get(hash) != nil {
 		log.Trace("Discarding already known transaction", "hash", hash)
 		knownTxMeter.Mark(1)
