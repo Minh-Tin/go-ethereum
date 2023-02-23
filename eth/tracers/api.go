@@ -593,6 +593,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 	if block.NumberU64() == 0 {
 		return nil, errors.New("genesis is not traceable")
 	}
+	// Prepare base state
 	parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
 	if err != nil {
 		return nil, err
@@ -607,23 +608,64 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 	}
 	defer release()
 
+	// JS tracers have high overhead. In this case run a parallel
+	// process that generates states in one thread and traces txes
+	// in separate worker threads.
+	if config != nil && config.Tracer != nil && *config.Tracer != "" {
+		if isJS := DefaultDirectory.IsJS(*config.Tracer); isJS {
+			return api.traceBlockParallel(ctx, block, statedb, config)
+		}
+	}
+	// Native tracers have low overhead
+	var (
+		txs       = block.Transactions()
+		blockHash = block.Hash()
+		is158     = api.backend.ChainConfig().IsEIP158(block.Number())
+		blockCtx  = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+		signer    = types.MakeSigner(api.backend.ChainConfig(), block.Number())
+		results   = make([]*txTraceResult, len(txs))
+	)
+	for i, tx := range txs {
+		// Generate the next state snapshot fast without tracing
+		msg, _ := tx.AsMessage(signer, block.BaseFee())
+		txctx := &Context{
+			BlockHash: blockHash,
+			TxIndex:   i,
+			TxHash:    tx.Hash(),
+		}
+		res, err := api.traceTx(ctx, msg, txctx, blockCtx, statedb, config)
+		if err != nil {
+			return nil, err
+		}
+		results[i] = &txTraceResult{Result: res}
+		// Finalize the state so any modifications are written to the trie
+		// Only delete empty objects if EIP158/161 (a.k.a Spurious Dragon) is in effect
+		statedb.Finalise(is158)
+	}
+	return results, nil
+}
+
+// traceBlockParallel is for tracers that have a high overhead (read JS tracers). One thread
+// runs along and executes txes without tracing enabled to generate their prestate.
+// Worker threads take the tasks and the prestate and trace them.
+func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, statedb *state.StateDB, config *TraceConfig) ([]*txTraceResult, error) {
 	// Execute all the transaction contained within the block concurrently
 	var (
-		signer  = types.MakeSigner(api.backend.ChainConfig(), block.Number())
-		txs     = block.Transactions()
-		results = make([]*txTraceResult, len(txs))
-		pend    sync.WaitGroup
+		txs       = block.Transactions()
+		blockHash = block.Hash()
+		blockCtx  = core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+		signer    = types.MakeSigner(api.backend.ChainConfig(), block.Number())
+		results   = make([]*txTraceResult, len(txs))
+		pend      sync.WaitGroup
 	)
 	threads := runtime.NumCPU()
 	if threads > len(txs) {
 		threads = len(txs)
 	}
 	jobs := make(chan *txTraceTask, threads)
-	blockHash := block.Hash()
 	for th := 0; th < threads; th++ {
 		pend.Add(1)
 		go func() {
-			blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 			defer pend.Done()
 			// Fetch and execute the next transaction trace tasks
 			for task := range jobs {
@@ -645,7 +687,6 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 
 	// Feed the transactions into the tracers and return
 	var failed error
-	blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 txloop:
 	for i, tx := range txs {
 		// Send the trace task over for execution
@@ -731,17 +772,9 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 	// actual specified block, not any preceding blocks that we have to go through
 	// in order to obtain the state.
 	// Therefore, it's perfectly valid to specify `"futureForkBlock": 0`, to enable `futureFork`
-
 	if config != nil && config.Overrides != nil {
-		// Copy the config, to not screw up the main config
-		// Note: the Clique-part is _not_ deep copied
-		chainConfigCopy := new(params.ChainConfig)
-		*chainConfigCopy = *chainConfig
-		chainConfig = chainConfigCopy
-		if berlin := config.Config.Overrides.BerlinBlock; berlin != nil {
-			chainConfig.BerlinBlock = berlin
-			canon = false
-		}
+		// Note: This copies the config, to not screw up the main config
+		chainConfig, canon = overrideConfig(chainConfig, config.Overrides)
 	}
 	for i, tx := range block.Transactions() {
 		// Prepare the transaction for un-traced execution
@@ -923,7 +956,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 	// Default tracer is the struct logger
 	tracer = logger.NewStructLogger(config.Config)
 	if config.Tracer != nil {
-		tracer, err = New(*config.Tracer, txctx, config.TracerConfig)
+		tracer, err = DefaultDirectory.New(*config.Tracer, txctx, config.TracerConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -964,4 +997,49 @@ func APIs(backend Backend) []rpc.API {
 			Service:   NewAPI(backend),
 		},
 	}
+}
+
+// overrideConfig returns a copy of original with forks enabled by override enabled,
+// along with a boolean that indicates whether the copy is canonical (equivalent to the original).
+// Note: the Clique-part is _not_ deep copied
+func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) (*params.ChainConfig, bool) {
+	copy := new(params.ChainConfig)
+	*copy = *original
+	canon := true
+
+	// Apply forks (after Berlin) to the copy.
+	if block := override.BerlinBlock; block != nil {
+		copy.BerlinBlock = block
+		canon = false
+	}
+	if block := override.LondonBlock; block != nil {
+		copy.LondonBlock = block
+		canon = false
+	}
+	if block := override.ArrowGlacierBlock; block != nil {
+		copy.ArrowGlacierBlock = block
+		canon = false
+	}
+	if block := override.GrayGlacierBlock; block != nil {
+		copy.GrayGlacierBlock = block
+		canon = false
+	}
+	if block := override.MergeNetsplitBlock; block != nil {
+		copy.MergeNetsplitBlock = block
+		canon = false
+	}
+	if timestamp := override.ShanghaiTime; timestamp != nil {
+		copy.ShanghaiTime = timestamp
+		canon = false
+	}
+	if timestamp := override.CancunTime; timestamp != nil {
+		copy.CancunTime = timestamp
+		canon = false
+	}
+	if timestamp := override.PragueTime; timestamp != nil {
+		copy.PragueTime = timestamp
+		canon = false
+	}
+
+	return copy, canon
 }
