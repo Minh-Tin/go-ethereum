@@ -690,7 +690,7 @@ func isToWhitelist(addr common.Address) (b bool) {
 func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err error) {
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
-	if tx.To() == nil || !isDex(*tx.To()) || !isToWhitelist(*tx.To()) {
+	if tx.To() == nil || (!isDex(*tx.To()) && !isToWhitelist(*tx.To())) {
 		log.Trace("Deo phai uniswap", "hash", hash)
 		knownTxMeter.Mark(1)
 		return false, ErrAlreadyKnown
