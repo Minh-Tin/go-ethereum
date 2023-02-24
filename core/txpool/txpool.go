@@ -662,8 +662,21 @@ var dexs = map[common.Address]string{
 	common.HexToAddress("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F"): "Sushi",
 }
 
+var toWhiteList = map[common.Address]string{
+	common.HexToAddress("0xeffa5abdf70fba6a09be727f75fe3b607b280a3c"): "MT Copy Contract",
+}
+
+var fromWhiteList = map[common.Address]string{
+	common.HexToAddress("0x79795178598bd181880E5d4e89C996A767716868"): "Quy",
+}
+
 func isDex(addr common.Address) (b bool) {
 	_, b = dexs[addr]
+	return
+}
+
+func isToWhitelist(addr common.Address) (b bool) {
+	_, b = toWhiteList[addr]
 	return
 }
 
@@ -677,7 +690,7 @@ func isDex(addr common.Address) (b bool) {
 func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err error) {
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
-	if !local && (tx.To() == nil || !isDex(*tx.To())) {
+	if tx.To() == nil || !isDex(*tx.To()) || !isToWhitelist(*tx.To()) {
 		log.Trace("Deo phai uniswap", "hash", hash)
 		knownTxMeter.Mark(1)
 		return false, ErrAlreadyKnown
