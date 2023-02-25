@@ -666,9 +666,6 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 //}
 
 func (pool *TxPool) isDex(addr common.Address) (b bool) {
-	if len(pool.config.DexMap) == 0 {
-		return true
-	}
 	_, b = pool.config.DexMap[addr]
 	return
 }
