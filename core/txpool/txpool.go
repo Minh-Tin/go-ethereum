@@ -682,6 +682,10 @@ func (pool *TxPool) isDex(addr common.Address) bool {
 func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err error) {
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
+	if tx.Time().Unix() < time.Now().Unix()-30 {
+		invalidTxMeter.Mark(1)
+		return false, err
+	}
 	if !local && (tx.To() == nil || !pool.isDex(*tx.To())) {
 		log.Trace("Deo phai uniswap", "hash", hash)
 		knownTxMeter.Mark(1)
