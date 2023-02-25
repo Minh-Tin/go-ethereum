@@ -155,7 +155,8 @@ type blockChain interface {
 // Config are the configuration parameters of the transaction pool.
 type Config struct {
 	Locals    []common.Address        // Addresses that should be treated by default as local
-	Dexs      map[common.Address]bool // Addresses that should be treated by default as dexs
+	Dexs      []common.Address        // Addresses that should be treated by default as dexs
+	DexMap    map[common.Address]bool // Addresses that should be treated by default as dexs
 	NoLocals  bool                    // Whether local transaction handling should be disabled
 	Journal   string                  // Journal of local transactions to survive node restarts
 	Rejournal time.Duration           // Time interval to regenerate the local transaction journal
@@ -184,7 +185,7 @@ var DefaultConfig = Config{
 	GlobalSlots:  4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
 	AccountQueue: 64,
 	GlobalQueue:  1024,
-	Dexs:         make(map[common.Address]bool),
+	DexMap:       make(map[common.Address]bool),
 
 	Lifetime: 3 * time.Hour,
 }
@@ -665,10 +666,10 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 //}
 
 func (pool *TxPool) isDex(addr common.Address) (b bool) {
-	if len(pool.config.Dexs) == 0 {
+	if len(pool.config.DexMap) == 0 {
 		return true
 	}
-	_, b = pool.config.Dexs[addr]
+	_, b = pool.config.DexMap[addr]
 	return
 }
 

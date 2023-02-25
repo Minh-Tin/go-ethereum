@@ -1583,7 +1583,8 @@ func setTxPool(ctx *cli.Context, cfg *txpool.Config) {
 			if trimmed := strings.TrimSpace(account); !common.IsHexAddress(trimmed) {
 				Fatalf("Invalid address in --txpool.dexs: %s", trimmed)
 			} else {
-				cfg.Dexs[common.HexToAddress(account)] = true
+				cfg.Dexs = append(cfg.Dexs, common.HexToAddress(account))
+				cfg.DexMap[common.HexToAddress(account)] = true
 			}
 		}
 	}
