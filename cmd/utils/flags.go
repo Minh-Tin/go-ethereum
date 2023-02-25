@@ -379,6 +379,11 @@ var (
 		Usage:    "Comma separated accounts to treat as locals (no flush, priority inclusion)",
 		Category: flags.TxPoolCategory,
 	}
+	TxPoolDexsFlag = &cli.StringFlag{
+		Name:     "txpool.dexs",
+		Usage:    "Comma separated accounts to treat as dexs (no flush, priority inclusion)",
+		Category: flags.TxPoolCategory,
+	}
 	TxPoolNoLocalsFlag = &cli.BoolFlag{
 		Name:     "txpool.nolocals",
 		Usage:    "Disables price exemptions for locally submitted transactions",
@@ -1569,6 +1574,16 @@ func setTxPool(ctx *cli.Context, cfg *txpool.Config) {
 				Fatalf("Invalid account in --txpool.locals: %s", trimmed)
 			} else {
 				cfg.Locals = append(cfg.Locals, common.HexToAddress(account))
+			}
+		}
+	}
+	if ctx.IsSet(TxPoolDexsFlag.Name) {
+		dexs := strings.Split(ctx.String(TxPoolDexsFlag.Name), ",")
+		for _, account := range dexs {
+			if trimmed := strings.TrimSpace(account); !common.IsHexAddress(trimmed) {
+				Fatalf("Invalid address in --txpool.dexs: %s", trimmed)
+			} else {
+				cfg.Dexs = append(cfg.Dexs, common.HexToAddress(account))
 			}
 		}
 	}

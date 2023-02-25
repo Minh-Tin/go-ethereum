@@ -155,6 +155,7 @@ type blockChain interface {
 // Config are the configuration parameters of the transaction pool.
 type Config struct {
 	Locals    []common.Address // Addresses that should be treated by default as local
+	Dexs      []common.Address // Addresses that should be treated by default as dexs
 	NoLocals  bool             // Whether local transaction handling should be disabled
 	Journal   string           // Journal of local transactions to survive node restarts
 	Rejournal time.Duration    // Time interval to regenerate the local transaction journal
@@ -653,18 +654,22 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	return nil
 }
 
-var dexs = map[common.Address]string{
-	common.HexToAddress("0x7a250d5630b4cf539739df2c5dacb4c659f2488d"): "Uni v2",
-	common.HexToAddress("0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45"): "Uni v3",
-	common.HexToAddress("0xEf1c6E67703c7BD7107eed8303Fbe6EC2554BF6B"): "Universal",
-	common.HexToAddress("0x7a250d5630b4cf539739df2c5dacb4c659f2488d"): "1inchv4",
-	common.HexToAddress("0x1111111254fb6c44bAC0beD2854e76F90643097d"): "1inchv5",
-	common.HexToAddress("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F"): "Sushi",
-}
+//var dexs = map[common.Address]string{
+//	common.HexToAddress("0x7a250d5630b4cf539739df2c5dacb4c659f2488d"): "Uni v2",
+//	common.HexToAddress("0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45"): "Uni v3",
+//	common.HexToAddress("0xEf1c6E67703c7BD7107eed8303Fbe6EC2554BF6B"): "Universal",
+//	common.HexToAddress("0x7a250d5630b4cf539739df2c5dacb4c659f2488d"): "1inchv4",
+//	common.HexToAddress("0x1111111254fb6c44bAC0beD2854e76F90643097d"): "1inchv5",
+//	common.HexToAddress("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F"): "Sushi",
+//}
 
-func isDex(addr common.Address) (b bool) {
-	_, b = dexs[addr]
-	return
+func (pool *TxPool) isDex(addr common.Address) bool {
+	for _, dex := range pool.config.Dexs {
+		if addr == dex {
+			return true
+		}
+	}
+	return false
 }
 
 // add validates a transaction and inserts it into the non-executable queue for later
@@ -677,7 +682,7 @@ func isDex(addr common.Address) (b bool) {
 func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err error) {
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
-	if !local && (tx.To() == nil || !isDex(*tx.To())) {
+	if !local && (tx.To() == nil || !pool.isDex(*tx.To())) {
 		log.Trace("Deo phai uniswap", "hash", hash)
 		knownTxMeter.Mark(1)
 		return false, ErrAlreadyKnown
