@@ -154,12 +154,11 @@ type blockChain interface {
 
 // Config are the configuration parameters of the transaction pool.
 type Config struct {
-	Locals    []common.Address        // Addresses that should be treated by default as local
-	Dexs      []common.Address        // Addresses that should be treated by default as dexs
-	DexMap    map[common.Address]bool // Addresses that should be treated by default as dexs
-	NoLocals  bool                    // Whether local transaction handling should be disabled
-	Journal   string                  // Journal of local transactions to survive node restarts
-	Rejournal time.Duration           // Time interval to regenerate the local transaction journal
+	Locals    []common.Address // Addresses that should be treated by default as local
+	Dexs      []common.Address // Addresses that should be treated by default as dexs
+	NoLocals  bool             // Whether local transaction handling should be disabled
+	Journal   string           // Journal of local transactions to survive node restarts
+	Rejournal time.Duration    // Time interval to regenerate the local transaction journal
 
 	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
 	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
@@ -185,7 +184,6 @@ var DefaultConfig = Config{
 	GlobalSlots:  4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
 	AccountQueue: 64,
 	GlobalQueue:  1024,
-	DexMap:       make(map[common.Address]bool),
 
 	Lifetime: 3 * time.Hour,
 }
@@ -665,9 +663,13 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 //	common.HexToAddress("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F"): "Sushi",
 //}
 
-func (pool *TxPool) isDex(addr common.Address) (b bool) {
-	_, b = pool.config.DexMap[addr]
-	return
+func (pool *TxPool) isDex(addr common.Address) bool {
+	for _, dex := range pool.config.Dexs {
+		if dex == addr {
+			return true
+		}
+	}
+	return false
 }
 
 // add validates a transaction and inserts it into the non-executable queue for later
