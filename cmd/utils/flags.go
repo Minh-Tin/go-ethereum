@@ -1584,7 +1584,6 @@ func setTxPool(ctx *cli.Context, cfg *txpool.Config) {
 				Fatalf("Invalid address in --txpool.dexs: %s", trimmed)
 			} else {
 				cfg.Dexs = append(cfg.Dexs, common.HexToAddress(account))
-				cfg.DexMap[common.HexToAddress(account)] = true
 			}
 		}
 	}
