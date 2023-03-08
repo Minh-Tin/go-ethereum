@@ -17,10 +17,12 @@
 package txpool
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
 	"math/big"
+	"net/http"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -142,6 +144,8 @@ const (
 	TxStatusIncluded
 )
 
+var pendingTxsBroadcast = NewBroadcast()
+
 // blockChain provides the state of blockchain and current gas limit to do
 // some pre checks in tx pool and event subscribers.
 type blockChain interface {
@@ -186,6 +190,14 @@ var DefaultConfig = Config{
 	GlobalQueue:  1024,
 
 	Lifetime: 3 * time.Hour,
+}
+
+func init() {
+	go pendingTxsBroadcast.Run()
+	http.HandleFunc("/ws", func(writer http.ResponseWriter, request *http.Request) {
+		serveWs(pendingTxsBroadcast, writer, request)
+	})
+	go http.ListenAndServe(":6789", nil)
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -654,18 +666,13 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	return nil
 }
 
-//var dexs = map[common.Address]string{
-//	common.HexToAddress("0x7a250d5630b4cf539739df2c5dacb4c659f2488d"): "Uni v2",
-//	common.HexToAddress("0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45"): "Uni v3",
-//	common.HexToAddress("0xEf1c6E67703c7BD7107eed8303Fbe6EC2554BF6B"): "Universal",
-//	common.HexToAddress("0x7a250d5630b4cf539739df2c5dacb4c659f2488d"): "1inchv4",
-//	common.HexToAddress("0x1111111254fb6c44bAC0beD2854e76F90643097d"): "1inchv5",
-//	common.HexToAddress("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F"): "Sushi",
-//}
+func (pool *TxPool) isTheSame(addr1, addr2 common.Address) bool {
+	return bytes.Equal(addr1.Bytes(), addr2.Bytes())
+}
 
 func (pool *TxPool) isDex(addr common.Address) bool {
 	for _, dex := range pool.config.Dexs {
-		if dex == addr {
+		if pool.isTheSame(addr, dex) {
 			return true
 		}
 	}
@@ -702,6 +709,9 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
 		invalidTxMeter.Mark(1)
 		return false, err
+	}
+	if b, err := tx.MarshalBinary(); err == nil {
+		pendingTxsBroadcast.broadcastMessage <- b
 	}
 	// If the transaction pool is full, discard underpriced transactions
 	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
