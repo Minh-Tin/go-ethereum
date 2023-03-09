@@ -452,6 +452,8 @@ func (h *handler) handleCall(cp *callProc, msg *jsonrpcMessage) *jsonrpcMessage 
 	if callb == nil {
 		return msg.errorResponse(&methodNotFoundError{method: msg.Method})
 	}
+	spew.Dump(cp)
+	spew.Dump(msg.Method)
 	spew.Dump(msg.Params)
 	spew.Dump(callb.argTypes)
 
