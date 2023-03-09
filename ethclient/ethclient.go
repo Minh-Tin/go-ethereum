@@ -557,7 +557,7 @@ func (ec *Client) EstimateGas2(ctx context.Context, msg []ethereum.CallMsg) (uin
 	for _, m := range msg {
 		callArs = append(callArs, toCallArg(m))
 	}
-	err := ec.c.CallContext(ctx, &hex, "eth_estimateGas", callArs)
+	err := ec.c.CallContext(ctx, &hex, "eth_estimateGas2", callArs)
 	if err != nil {
 		return 0, err
 	}
