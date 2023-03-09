@@ -999,6 +999,11 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	if err := vmError(); err != nil {
 		return nil, err
 	}
+	// Execute the message.
+	result, err = core.ApplyMessage(evm, msg, gp)
+	if err := vmError(); err != nil {
+		return nil, err
+	}
 
 	// If the timer caused an abort, return an appropriate error message
 	if evm.Cancelled() {
