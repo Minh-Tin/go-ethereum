@@ -93,6 +93,7 @@ func (r *serviceRegistry) registerName(name string, rcvr interface{}) error {
 
 // callback returns the callback corresponding to the given RPC method name.
 func (r *serviceRegistry) callback(method string) *callback {
+	log.Warn("Callback", method)
 	elem := strings.SplitN(method, serviceMethodSeparator, 2)
 	if len(elem) != 2 {
 		return nil
