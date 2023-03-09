@@ -19,6 +19,7 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"reflect"
 	"runtime"
 	"strings"
@@ -62,11 +63,13 @@ func (r *serviceRegistry) registerName(name string, rcvr interface{}) error {
 	if name == "" {
 		return fmt.Errorf("no service name for type %s", rcvrVal.Type().String())
 	}
+	fmt.Println(name)
+
 	callbacks := suitableCallbacks(rcvrVal)
 	if len(callbacks) == 0 {
 		return fmt.Errorf("service %T doesn't have any suitable methods/subscriptions to expose", rcvr)
 	}
-
+	spew.Dump(callbacks)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.services == nil {
