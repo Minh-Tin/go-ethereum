@@ -550,13 +550,13 @@ func (ec *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64
 	return uint64(hex), nil
 }
 
-func (ec *Client) EstimateGasManyTx(ctx context.Context, msg []ethereum.CallMsg) ([]uint64, []error, error) {
+func (ec *Client) EstimateGas2(ctx context.Context, msg []ethereum.CallMsg) ([]uint64, []error, error) {
 	var hex hexutil.Uint64
 	var callArs []interface{}
 	for _, m := range msg {
 		callArs = append(callArs, toCallArg(m))
 	}
-	err := ec.c.CallContext(ctx, &hex, "eth_estimateGasManyTx", callArs)
+	err := ec.c.CallContext(ctx, &hex, "eth_estimateGas2", callArs)
 	if err != nil {
 		return []uint64{}, []error{}, err
 	}
