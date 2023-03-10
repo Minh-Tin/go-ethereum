@@ -1254,9 +1254,11 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 		if err != nil {
 			result = append(result, 0)
 			errs = append(errs, err)
+			log.Warn("Domanyerr", err.Error())
 			continue
 		} else {
 			result = append(result, res.UsedGas)
+			errs = append(errs, nil)
 		}
 		if err := vmError(); err != nil {
 			errs = append(errs, err)
@@ -1269,7 +1271,7 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 	if evm.Cancelled() {
 		return []interface{}{}, fmt.Errorf("execution aborted (timeout = %v)", timeout)
 	}
-	return []interface{}{result, errs}, nil
+	return []interface{}{result, errs}, vmError()
 }
 
 // RPCMarshalHeader converts the given header to the RPC output .
