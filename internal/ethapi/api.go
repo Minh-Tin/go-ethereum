@@ -1058,6 +1058,8 @@ func (s *BlockChainAPI) Call(ctx context.Context, args TransactionArgs, blockNrO
 	return result.Return(), result.Err
 }
 
+// EstimateGasManyTx returns an estimate of the amount of gas needed to execute the
+// given transaction against the current pending block.
 func (s *BlockChainAPI) EstimateGasManyTx(ctx context.Context, args []TransactionArgs,
 	blockNrOrHash *rpc.BlockNumberOrHash) ([]uint64, []error, error) {
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
