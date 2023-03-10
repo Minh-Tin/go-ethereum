@@ -231,6 +231,10 @@ func (config *Config) sanitize() Config {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultConfig.Lifetime)
 		conf.Lifetime = DefaultConfig.Lifetime
 	}
+	if conf.WsPort < 1 {
+		log.Warn("Sanitizing invalid txpool ws port", "provided", conf.WsPort, "updated", DefaultConfig.WsPort)
+		conf.WsPort = DefaultConfig.WsPort
+	}
 	return conf
 }
 
