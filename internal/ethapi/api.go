@@ -1252,7 +1252,7 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 		}
 		res, err := core.ApplyMessage(evm, msg, gp)
 		if err != nil {
-			return 0, fmt.Errorf("failed to apply transaction: %v err: %v", a.toTransaction().Hash(), err)
+			return 0, err
 		} else {
 			result = append(result, res.UsedGas)
 		}
