@@ -1243,11 +1243,15 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 	var result []uint64
 	var errs []string
+	var firstErr error
 	for _, a := range args {
 		msg, err = a.ToMessage(globalGasCap, header.BaseFee)
 		if err != nil {
 			result = append(result, 0)
 			errs = append(errs, err.Error())
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 		res, err := core.ApplyMessage(evm, msg, gp)
@@ -1260,6 +1264,9 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 		if err != nil {
 			result = append(result, 0)
 			errs = append(errs, err.Error())
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		} else {
 			result = append(result, res.UsedGas)
@@ -1271,7 +1278,7 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 	if evm.Cancelled() {
 		return []interface{}{}, fmt.Errorf("execution aborted (timeout = %v)", timeout)
 	}
-	return []interface{}{result, errs}, nil
+	return []interface{}{result, errs}, firstErr
 }
 
 // RPCMarshalHeader converts the given header to the RPC output .
