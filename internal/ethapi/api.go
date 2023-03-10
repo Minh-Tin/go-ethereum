@@ -1243,7 +1243,6 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 	var result []uint64
 	var errs []error
-	var errFlag = false
 	for _, a := range args {
 		msg, err = a.ToMessage(globalGasCap, header.BaseFee)
 		if err != nil {
@@ -1252,26 +1251,26 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 			continue
 		}
 		res, err := core.ApplyMessage(evm, msg, gp)
+		if er := vmError(); er != nil {
+			return nil, er
+		}
+		if evm.Cancelled() {
+			return nil, fmt.Errorf("execution aborted (timeout = %v)", timeout)
+		}
 		if err != nil {
 			result = append(result, 0)
 			errs = append(errs, err)
-			errFlag = true
+			log.Warn("Domanyerr", err.Error())
 			continue
 		} else {
 			result = append(result, res.UsedGas)
 			errs = append(errs, nil)
-		}
-		if err := vmError(); err != nil {
-			return []interface{}{result, errs}, vmError()
 		}
 	}
 
 	// If the timer caused an abort, return an appropriate error message
 	if evm.Cancelled() {
 		return []interface{}{}, fmt.Errorf("execution aborted (timeout = %v)", timeout)
-	}
-	if errFlag {
-		return []interface{}{result, errs}, errors.New("execution error")
 	}
 	return []interface{}{result, errs}, nil
 }
