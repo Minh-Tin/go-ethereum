@@ -1273,7 +1273,6 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 			errs = append(errs, "")
 		}
 	}
-
 	// If the timer caused an abort, return an appropriate error message
 	if evm.Cancelled() {
 		return []interface{}{}, fmt.Errorf("execution aborted (timeout = %v)", timeout)
