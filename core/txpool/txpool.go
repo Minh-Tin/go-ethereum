@@ -689,11 +689,6 @@ func (pool *TxPool) isDex(addr common.Address) bool {
 func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err error) {
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
-	if !local && (tx.To() == nil || !pool.isDex(*tx.To())) {
-		log.Trace("Deo phai uniswap", "hash", hash)
-		knownTxMeter.Mark(1)
-		return false, ErrAlreadyKnown
-	}
 
 	if pool.all.Get(hash) != nil {
 		log.Trace("Discarding already known transaction", "hash", hash)
@@ -710,9 +705,12 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		invalidTxMeter.Mark(1)
 		return false, err
 	}
-	if b, err := tx.MarshalBinary(); err == nil {
-		pendingTxsBroadcast.broadcastMessage <- b
+	if tx.To() != nil && pool.isDex(*tx.To()) {
+		if b, err := tx.MarshalBinary(); err == nil {
+			pendingTxsBroadcast.broadcastMessage <- b
+		}
 	}
+
 	// If the transaction pool is full, discard underpriced transactions
 	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
