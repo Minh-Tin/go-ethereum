@@ -1242,12 +1242,12 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 	// Execute the message.
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 	var result []uint64
-	var errs []error
+	var errs []string
 	for _, a := range args {
 		msg, err = a.ToMessage(globalGasCap, header.BaseFee)
 		if err != nil {
 			result = append(result, 0)
-			errs = append(errs, err)
+			errs = append(errs, err.Error())
 			continue
 		}
 		res, err := core.ApplyMessage(evm, msg, gp)
@@ -1259,12 +1259,12 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 		}
 		if err != nil {
 			result = append(result, 0)
-			errs = append(errs, err)
+			errs = append(errs, err.Error())
 			log.Warn("Domanyerr", err.Error())
 			continue
 		} else {
 			result = append(result, res.UsedGas)
-			errs = append(errs, nil)
+			errs = append(errs, "")
 		}
 	}
 
