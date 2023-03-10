@@ -1191,7 +1191,7 @@ func (s *BlockChainAPI) EstimateGas(ctx context.Context, args TransactionArgs, b
 // EstimateGasManyTx returns an estimate of the amount of gas needed to execute the
 // given transaction against the current pending block.
 func (s *BlockChainAPI) EstimateGasManyTx(ctx context.Context, args []TransactionArgs,
-	blockNrOrHash *rpc.BlockNumberOrHash) (hexutil.Uint64, error) {
+	blockNrOrHash *rpc.BlockNumberOrHash) ([]interface{}, error) {
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
 	if blockNrOrHash != nil {
 		bNrOrHash = *blockNrOrHash
@@ -1200,14 +1200,14 @@ func (s *BlockChainAPI) EstimateGasManyTx(ctx context.Context, args []Transactio
 }
 
 func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash,
-	overrides *StateOverride, timeout time.Duration, globalGasCap uint64) (hexutil.Uint64, error) {
+	overrides *StateOverride, timeout time.Duration, globalGasCap uint64) ([]interface{}, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 	state, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
 	if state == nil || err != nil {
-		return 0, err
+		return []interface{}{}, err
 	}
 	if err := overrides.Apply(state); err != nil {
-		return 0, err
+		return []interface{}{}, err
 	}
 	// Setup context so it may be cancelled the call has completed
 	// or, in case of unmetered gas, setup a context with a timeout.
@@ -1223,15 +1223,15 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 
 	// Get a new instance of the EVM.
 	if len(args) < 1 {
-		return 0, errors.New("Empty Args")
+		return []interface{}{}, errors.New("Empty Args")
 	}
 	msg, err := args[len(args)-1].ToMessage(globalGasCap, header.BaseFee)
 	if err != nil {
-		return 0, err
+		return []interface{}{}, err
 	}
 	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true})
 	if err != nil {
-		return 0, err
+		return []interface{}{}, err
 	}
 	// Wait for the context to be done and cancel the evm. Even if the
 	// EVM has finished, cancelling may be done (repeatedly)
@@ -1252,7 +1252,7 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 		}
 		res, err := core.ApplyMessage(evm, msg, gp)
 		if err != nil {
-			return 0, err
+			return []interface{}{}, err
 		} else {
 			result = append(result, res.UsedGas)
 		}
@@ -1265,9 +1265,9 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 
 	// If the timer caused an abort, return an appropriate error message
 	if evm.Cancelled() {
-		return 0, fmt.Errorf("execution aborted (timeout = %v)", timeout)
+		return []interface{}{}, fmt.Errorf("execution aborted (timeout = %v)", timeout)
 	}
-	return 0, nil
+	return []interface{}{result, errs}, nil
 }
 
 // RPCMarshalHeader converts the given header to the RPC output .

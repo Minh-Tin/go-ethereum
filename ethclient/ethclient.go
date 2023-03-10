@@ -550,17 +550,17 @@ func (ec *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64
 	return uint64(hex), nil
 }
 
-func (ec *Client) EstimateGasManyTx(ctx context.Context, msg []ethereum.CallMsg) (uint64, error) {
-	var hex hexutil.Uint64
+func (ec *Client) EstimateGasManyTx(ctx context.Context, msg []ethereum.CallMsg) ([]interface{}, error) {
+	var resp []interface{}
 	var callArs []interface{}
 	for _, m := range msg {
 		callArs = append(callArs, toCallArg(m))
 	}
-	err := ec.c.CallContext(ctx, &hex, "eth_estimateGasManyTx", callArs)
+	err := ec.c.CallContext(ctx, &resp, "eth_estimateGasManyTx", callArs)
 	if err != nil {
-		return 0, err
+		return resp, err
 	}
-	return uint64(hex), nil
+	return resp, nil
 }
 
 // SendTransaction injects a signed transaction into the pending pool for execution.
