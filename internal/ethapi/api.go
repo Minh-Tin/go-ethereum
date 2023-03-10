@@ -1252,7 +1252,9 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 		}
 		res, err := core.ApplyMessage(evm, msg, gp)
 		if err != nil {
-			return []interface{}{}, err
+			result = append(result, 0)
+			errs = append(errs, err)
+			continue
 		} else {
 			result = append(result, res.UsedGas)
 		}
