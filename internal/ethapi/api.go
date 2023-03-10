@@ -1260,7 +1260,6 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 		if err != nil {
 			result = append(result, 0)
 			errs = append(errs, err.Error())
-			log.Warn("Domanyerr", err.Error())
 			continue
 		} else {
 			result = append(result, res.UsedGas)
