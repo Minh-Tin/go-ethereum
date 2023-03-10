@@ -160,9 +160,10 @@ type blockChain interface {
 type Config struct {
 	Locals    []common.Address // Addresses that should be treated by default as local
 	Dexs      []common.Address // Addresses that should be treated by default as dexs
-	NoLocals  bool             // Whether local transaction handling should be disabled
-	Journal   string           // Journal of local transactions to survive node restarts
-	Rejournal time.Duration    // Time interval to regenerate the local transaction journal
+	WsPort    int
+	NoLocals  bool          // Whether local transaction handling should be disabled
+	Journal   string        // Journal of local transactions to survive node restarts
+	Rejournal time.Duration // Time interval to regenerate the local transaction journal
 
 	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
 	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
@@ -189,15 +190,9 @@ var DefaultConfig = Config{
 	AccountQueue: 64,
 	GlobalQueue:  1024,
 
-	Lifetime: 3 * time.Hour,
-}
+	WsPort: 6789,
 
-func init() {
-	go pendingTxsBroadcast.Run()
-	http.HandleFunc("/ws", func(writer http.ResponseWriter, request *http.Request) {
-		serveWs(pendingTxsBroadcast, writer, request)
-	})
-	go http.ListenAndServe(":6789", nil)
+	Lifetime: 3 * time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -296,7 +291,16 @@ type txpoolResetRequest struct {
 func NewTxPool(config Config, chainconfig *params.ChainConfig, chain blockChain) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
-
+	go pendingTxsBroadcast.Run()
+	http.HandleFunc("/ws", func(writer http.ResponseWriter, request *http.Request) {
+		serveWs(pendingTxsBroadcast, writer, request)
+	})
+	go func() {
+		err := http.ListenAndServe(fmt.Sprintf(":%d", config.WsPort), nil)
+		if err != nil {
+			panic(err)
+		}
+	}()
 	// Create the transaction pool with its initial settings
 	pool := &TxPool{
 		config:          config,
