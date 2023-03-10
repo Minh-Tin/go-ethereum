@@ -1244,13 +1244,13 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 	var result []uint64
 	var errs []string
 	var firstErr error
-	for _, a := range args {
+	for i, a := range args {
 		msg, err = a.ToMessage(globalGasCap, header.BaseFee)
 		if err != nil {
 			result = append(result, 0)
 			errs = append(errs, err.Error())
 			if firstErr == nil {
-				firstErr = err
+				firstErr = errors.New(fmt.Sprintf("%d", i))
 			}
 			continue
 		}
@@ -1265,7 +1265,7 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 			result = append(result, 0)
 			errs = append(errs, err.Error())
 			if firstErr == nil {
-				firstErr = err
+				firstErr = errors.New(fmt.Sprintf("%d", i))
 			}
 			continue
 		} else {
