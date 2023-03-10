@@ -557,10 +557,7 @@ func (ec *Client) EstimateGasManyTx(ctx context.Context, msg []ethereum.CallMsg)
 		callArs = append(callArs, toCallArg(m))
 	}
 	err := ec.c.CallContext(ctx, &resp, "eth_estimateGasManyTx", callArs)
-	if err != nil {
-		return resp, err
-	}
-	return resp, nil
+	return resp, err
 }
 
 // SendTransaction injects a signed transaction into the pending pool for execution.

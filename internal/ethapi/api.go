@@ -1278,7 +1278,7 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 	if evm.Cancelled() {
 		return []interface{}{}, fmt.Errorf("execution aborted (timeout = %v)", timeout)
 	}
-	return []interface{}{result, errs}, firstErr
+	return []interface{}{result, errs}, nil
 }
 
 // RPCMarshalHeader converts the given header to the RPC output .
