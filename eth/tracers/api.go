@@ -943,7 +943,7 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 // TraceCall2 lets you trace a given eth_call. It collects the structured logs
 // created during the execution of EVM if the given transaction was added on
 // top of the provided block and returns them as a JSON object.
-func (api *API) TraceCall2(ctx context.Context, args ethapi.TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (interface{}, error) {
+func (api *API) TraceCall2(ctx context.Context, args []ethapi.TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) ([]interface{}, error) {
 	// Try to retrieve the specified block
 	var (
 		err   error
@@ -987,16 +987,79 @@ func (api *API) TraceCall2(ctx context.Context, args ethapi.TransactionArgs, blo
 		config.BlockOverrides.Apply(&vmctx)
 	}
 	// Execute the trace
-	msg, err := args.ToMessage(api.backend.RPCGasCap(), block.BaseFee())
-	if err != nil {
-		return nil, err
+	var msgs []core.Message
+	for _, a := range args {
+		msg, err := a.ToMessage(api.backend.RPCGasCap(), block.BaseFee())
+		if err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, msg)
 	}
 
 	var traceConfig *TraceConfig
 	if config != nil {
 		traceConfig = &config.TraceConfig
 	}
-	return api.traceTx(ctx, msg, new(Context), vmctx, statedb, traceConfig)
+	return api.traceTx2(ctx, msgs, new(Context), vmctx, statedb, traceConfig)
+}
+
+// traceTx2 configures a new tracer according to the provided configuration, and
+// executes the given message in the provided environment. The return value will
+// be tracer dependent.
+func (api *API) traceTx2(ctx context.Context, msgs []core.Message, txctx *Context, vmctx vm.BlockContext, statedb *state.StateDB, config *TraceConfig) (result []interface{}, rErr error) {
+	var (
+		tracer    Tracer
+		timeout   = defaultTraceTimeout
+		txContext = core.NewEVMTxContext(msgs[len(msgs)-1])
+		err       error
+	)
+	if config == nil {
+		config = &TraceConfig{}
+	}
+	// Default tracer is the struct logger
+	tracer = logger.NewStructLogger(config.Config)
+	if config.Tracer != nil {
+		tracer, err = DefaultDirectory.New(*config.Tracer, txctx, config.TracerConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+	vmenv := vm.NewEVM(vmctx, txContext, statedb, api.backend.ChainConfig(), vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
+
+	// Define a meaningful timeout of a single transaction trace
+	if config.Timeout != nil {
+		if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
+			return nil, err
+		}
+	}
+	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
+	go func() {
+		<-deadlineCtx.Done()
+		if errors.Is(deadlineCtx.Err(), context.DeadlineExceeded) {
+			tracer.Stop(errors.New("execution timeout"))
+			// Stop evm execution. Note cancellation is not necessarily immediate.
+			vmenv.Cancel()
+		}
+	}()
+	defer cancel()
+
+	// Call Prepare to clear out the statedb access list
+	statedb.SetTxContext(txctx.TxHash, txctx.TxIndex)
+	var r []json.RawMessage
+	var e []string
+	for _, message := range msgs {
+		if _, err = core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas())); err != nil {
+			r = append(r, json.RawMessage{})
+			e = append(e, err.Error())
+			//return nil, fmt.Errorf("tracing failed: %w", err)
+		} else {
+			jRaw, err2 := tracer.GetResult()
+			r = append(r, jRaw)
+			e = append(e, err2.Error())
+		}
+	}
+	result = []interface{}{r, e}
+	return result, nil
 }
 
 // traceTx configures a new tracer according to the provided configuration, and
