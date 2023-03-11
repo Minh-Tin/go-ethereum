@@ -1229,6 +1229,7 @@ func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrO
 	if err != nil {
 		return []interface{}{}, err
 	}
+
 	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true})
 	if err != nil {
 		return []interface{}{}, err
