@@ -1055,7 +1055,12 @@ func (api *API) traceTx2(ctx context.Context, msgs []core.Message, txctx *Contex
 		} else {
 			jRaw, err2 := tracer.GetResult()
 			r = append(r, jRaw)
-			e = append(e, err2.Error())
+			if err2 != nil {
+				e = append(e, err2.Error())
+			} else {
+				e = append(e, "")
+			}
+
 		}
 	}
 	result = []interface{}{r, e}
