@@ -1051,7 +1051,7 @@ func (api *API) traceTx2(ctx context.Context, msgs []core.Message, txctx *Contex
 	var e []string
 	for _, message := range msgs {
 		if _, err = core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas())); err != nil {
-			r = append(r, json.RawMessage{})
+			r = append(r, []byte{})
 			e = append(e, err.Error())
 			//return nil, fmt.Errorf("tracing failed: %w", err)
 		} else {
