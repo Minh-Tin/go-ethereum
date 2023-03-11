@@ -351,43 +351,6 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 		return json.Unmarshal(resp.Result, result)
 	}
 }
-func (c *Client) CallContext2(ctx context.Context, result interface{}, method string, args ...interface{}) error {
-	if result != nil && reflect.TypeOf(result).Kind() != reflect.Ptr {
-		return fmt.Errorf("call result parameter must be pointer or nil interface: %v", result)
-	}
-	msg, err := c.newMessage2(method, args...)
-
-	op := &requestOp{ids: []json.RawMessage{msg.ID}, resp: make(chan *jsonrpcMessage, 1)}
-
-	if c.isHTTP {
-		err = c.sendHTTP(ctx, op, msg)
-	} else {
-		err = c.send(ctx, op, msg)
-	}
-	if err != nil {
-		panic(err)
-		return err
-	}
-
-	// dispatch has accepted the request and will close the channel when it quits.
-	switch resp, err := op.wait(ctx, c); {
-	case err != nil:
-		return err
-	case resp.Error != nil:
-		panic(resp)
-		return resp.Error
-	case len(resp.Result) == 0:
-		return ErrNoResult
-	default:
-		if result == nil {
-			return nil
-		}
-		result = resp.Result
-		//spew.Dump(resp.Result)
-	}
-
-	return nil
-}
 
 // BatchCall sends all given requests as a single batch and waits for the server
 // to return a response for all of them.
@@ -533,17 +496,6 @@ func (c *Client) Subscribe(ctx context.Context, namespace string, channel interf
 }
 
 func (c *Client) newMessage(method string, paramsIn ...interface{}) (*jsonrpcMessage, error) {
-	msg := &jsonrpcMessage{Version: vsn, ID: c.nextID(), Method: method}
-	if paramsIn != nil { // prevent sending "params":null
-		var err error
-		if msg.Params, err = json.Marshal(paramsIn); err != nil {
-			return nil, err
-		}
-	}
-	return msg, nil
-}
-
-func (c *Client) newMessage2(method string, paramsIn ...interface{}) (*jsonrpcMessage, error) {
 	msg := &jsonrpcMessage{Version: vsn, ID: c.nextID(), Method: method}
 	if paramsIn != nil { // prevent sending "params":null
 		var err error

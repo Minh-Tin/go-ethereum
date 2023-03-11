@@ -23,7 +23,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"os"
 	"runtime"
 	"sync"
@@ -945,7 +944,6 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 // created during the execution of EVM if the given transaction was added on
 // top of the provided block and returns them as a JSON object.
 func (api *API) TraceCall2(ctx context.Context, args []ethapi.TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) ([]interface{}, error) {
-	spew.Dump(args)
 	// Try to retrieve the specified block
 	var (
 		err   error
