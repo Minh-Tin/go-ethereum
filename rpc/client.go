@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"net/url"
 	"os"
 	"reflect"
@@ -356,11 +355,8 @@ func (c *Client) CallContext2(ctx context.Context, result interface{}, method st
 	if result != nil && reflect.TypeOf(result).Kind() != reflect.Ptr {
 		return fmt.Errorf("call result parameter must be pointer or nil interface: %v", result)
 	}
-	msg, err := c.newMessage(method, args...)
-	if err != nil {
-		panic(err)
-		return err
-	}
+	msg, err := c.newMessage2(method, args...)
+
 	op := &requestOp{ids: []json.RawMessage{msg.ID}, resp: make(chan *jsonrpcMessage, 1)}
 
 	if c.isHTTP {
@@ -378,6 +374,7 @@ func (c *Client) CallContext2(ctx context.Context, result interface{}, method st
 	case err != nil:
 		return err
 	case resp.Error != nil:
+		panic(resp)
 		return resp.Error
 	case len(resp.Result) == 0:
 		return ErrNoResult
@@ -385,9 +382,11 @@ func (c *Client) CallContext2(ctx context.Context, result interface{}, method st
 		if result == nil {
 			return nil
 		}
-		spew.Dump(resp.Result)
-		return json.Unmarshal(resp.Result, result)
+		result = resp.Result
+		//spew.Dump(resp.Result)
 	}
+
+	return nil
 }
 
 // BatchCall sends all given requests as a single batch and waits for the server
@@ -534,6 +533,17 @@ func (c *Client) Subscribe(ctx context.Context, namespace string, channel interf
 }
 
 func (c *Client) newMessage(method string, paramsIn ...interface{}) (*jsonrpcMessage, error) {
+	msg := &jsonrpcMessage{Version: vsn, ID: c.nextID(), Method: method}
+	if paramsIn != nil { // prevent sending "params":null
+		var err error
+		if msg.Params, err = json.Marshal(paramsIn); err != nil {
+			return nil, err
+		}
+	}
+	return msg, nil
+}
+
+func (c *Client) newMessage2(method string, paramsIn ...interface{}) (*jsonrpcMessage, error) {
 	msg := &jsonrpcMessage{Version: vsn, ID: c.nextID(), Method: method}
 	if paramsIn != nil { // prevent sending "params":null
 		var err error
