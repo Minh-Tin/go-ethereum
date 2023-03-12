@@ -186,6 +186,35 @@ func (s *TxPoolAPI) Content() map[string]map[string]map[string]*RPCTransaction {
 	return content
 }
 
+// ContentTo returns the transactions contained within the transaction pool.
+func (s *TxPoolAPI) ContentTo(addr common.Address) map[string]map[string]map[string]*RPCTransaction {
+	content := map[string]map[string]map[string]*RPCTransaction{
+		"pending": make(map[string]map[string]*RPCTransaction),
+		"queued":  make(map[string]map[string]*RPCTransaction),
+	}
+	pending, queue := s.b.TxPoolContent()
+	curHeader := s.b.CurrentHeader()
+	// Flatten the pending transactions
+	for account, txs := range pending {
+		dump := make(map[string]*RPCTransaction)
+		for _, tx := range txs {
+			if to := tx.To(); to != nil && *to == addr {
+				dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, s.b.ChainConfig())
+			}
+		}
+		content["pending"][account.Hex()] = dump
+	}
+	// Flatten the queued transactions
+	for account, txs := range queue {
+		dump := make(map[string]*RPCTransaction)
+		for _, tx := range txs {
+			dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, s.b.ChainConfig())
+		}
+		content["queued"][account.Hex()] = dump
+	}
+	return content
+}
+
 // ContentFrom returns the transactions contained within the transaction pool.
 func (s *TxPoolAPI) ContentFrom(addr common.Address) map[string]map[string]*RPCTransaction {
 	content := make(map[string]map[string]*RPCTransaction, 2)
