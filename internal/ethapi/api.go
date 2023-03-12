@@ -208,7 +208,9 @@ func (s *TxPoolAPI) ContentTo(addr common.Address) map[string]map[string]map[str
 	for account, txs := range queue {
 		dump := make(map[string]*RPCTransaction)
 		for _, tx := range txs {
-			dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, s.b.ChainConfig())
+			if to := tx.To(); to != nil && *to == addr {
+				dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, s.b.ChainConfig())
+			}
 		}
 		content["queued"][account.Hex()] = dump
 	}
