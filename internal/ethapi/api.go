@@ -1084,6 +1084,7 @@ func DoCall2(ctx context.Context, b Backend, args []TransactionArgs, blockNrOrHa
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 	for _, a := range args {
 		a.Gas = (*hexutil.Uint64)(&gas)
+		spew.Dump(a)
 		msg, err := a.ToMessage(globalGasCap, header.BaseFee)
 		if err != nil {
 			results = append(results, nil)
