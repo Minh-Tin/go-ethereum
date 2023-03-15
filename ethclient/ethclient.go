@@ -560,6 +560,16 @@ func (ec *Client) EstimateGasManyTx(ctx context.Context, msg []ethereum.CallMsg)
 	return resp, err
 }
 
+func (ec *Client) EstimateGas2(ctx context.Context, msg []ethereum.CallMsg) ([]interface{}, error) {
+	var resp []interface{}
+	var callArs []interface{}
+	for _, m := range msg {
+		callArs = append(callArs, toCallArg(m))
+	}
+	err := ec.c.CallContext(ctx, &resp, "eth_estimateGas2", callArs)
+	return resp, err
+}
+
 // SendTransaction injects a signed transaction into the pending pool for execution.
 //
 // If the transaction was a contract creation use the TransactionReceipt method to get the

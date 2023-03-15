@@ -1040,6 +1040,78 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	}
 	return result, nil
 }
+func DoCall2(ctx context.Context, b Backend, args []TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, timeout time.Duration, gas, globalGasCap uint64) ([]interface{}, error) {
+	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
+
+	state, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	if state == nil || err != nil {
+		return nil, err
+	}
+	if err := overrides.Apply(state); err != nil {
+		return nil, err
+	}
+	// Setup context so it may be cancelled the call has completed
+	// or, in case of unmetered gas, setup a context with a timeout.
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+
+	// Get a new instance of the EVM.
+	msg, err := args[len(args)-1].ToMessage(globalGasCap, header.BaseFee)
+	if err != nil {
+		return nil, err
+	}
+	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true})
+	if err != nil {
+		return nil, err
+	}
+	// Wait for the context to be done and cancel the evm. Even if the
+	// EVM has finished, cancelling may be done (repeatedly)
+	go func() {
+		<-ctx.Done()
+		evm.Cancel()
+	}()
+
+	var results []interface{}
+	var returnErrs []interface{}
+	// Execute the message.
+	gp := new(core.GasPool).AddGas(math.MaxUint64)
+	for _, a := range args {
+		a.Gas = (*hexutil.Uint64)(&gas)
+		msg, err := a.ToMessage(globalGasCap, header.BaseFee)
+		if err != nil {
+			results = append(results, nil)
+			returnErrs = append(returnErrs, err.Error())
+			continue
+		}
+		result, err := core.ApplyMessage(evm, msg, gp)
+		if err := vmError(); err != nil {
+			results = append(results, nil)
+			returnErrs = append(returnErrs, err.Error())
+			continue
+		}
+
+		// If the timer caused an abort, return an appropriate error message
+		if evm.Cancelled() {
+			results = append(results, nil)
+			returnErrs = append(returnErrs, fmt.Errorf("execution aborted (timeout = %v)", timeout).Error())
+			continue
+		}
+		if err != nil {
+			results = append(results, result)
+			returnErrs = append(returnErrs, fmt.Errorf("err: %w (supplied gas %d)", err, msg.Gas()).Error())
+			continue
+		}
+	}
+
+	return []interface{}{results, returnErrs}, nil
+}
 
 func newRevertError(result *core.ExecutionResult) *revertError {
 	reason, errUnpack := abi.UnpackRevert(result.Revert())
@@ -1208,6 +1280,64 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	}
 	return hexutil.Uint64(hi), nil
 }
+func DoEstimateGas2(ctx context.Context, b Backend, args []TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, gasCap uint64) (resp []interface{}, err error) {
+	// Binary search the gas requirement, as it may be higher than the amount used
+	var (
+		lo  uint64 = params.TxGas - 1
+		hi  uint64
+		cap uint64
+	)
+	block, err := b.BlockByNumberOrHash(ctx, blockNrOrHash)
+	if err != nil {
+		return nil, err
+	}
+	if block == nil {
+		return nil, errors.New("block not found")
+	}
+	hi = block.GasLimit()
+
+	// Recap the highest gas allowance with specified gascap.
+	if gasCap != 0 && hi > gasCap {
+		log.Warn("Caller gas above allowance, capping", "requested", hi, "cap", gasCap)
+		hi = gasCap
+	}
+
+	cap = hi
+	executable := func(gas uint64) ([]interface{}, error) {
+		result, err := DoCall2(ctx, b, args, blockNrOrHash, nil, 0, gas, gasCap)
+		if err != nil {
+			if errors.Is(err, core.ErrIntrinsicGas) {
+				return nil, nil // Special case, raise gas limit
+			}
+			return nil, err // Bail out
+		}
+		return result, nil
+	}
+	// Execute the binary search and hone in on an executable gas limit
+	for lo+1 < hi {
+		mid := (hi + lo) / 2
+		_, err := executable(mid)
+
+		// If the error is not nil(consensus error), it means the provided message
+		// call or transaction will never be accepted no matter how much gas it is
+		// assigned. Return the error directly, don't struggle any more.
+		if err != nil {
+			return nil, err
+		}
+		hi = mid
+	}
+	// Reject the transaction as invalid if it still fails at the highest allowance
+	if hi == cap {
+		resp, err = executable(hi)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return
+
+	// Create a helper to check if a gas allowance results in an executable transaction
+
+}
 
 // EstimateGas returns an estimate of the amount of gas needed to execute the
 // given transaction against the current pending block.
@@ -1217,6 +1347,16 @@ func (s *BlockChainAPI) EstimateGas(ctx context.Context, args TransactionArgs, b
 		bNrOrHash = *blockNrOrHash
 	}
 	return DoEstimateGas(ctx, s.b, args, bNrOrHash, s.b.RPCGasCap())
+}
+
+// EstimateGas2 returns an estimate of the amount of gas needed to execute the
+// given transaction against the current pending block.
+func (s *BlockChainAPI) EstimateGas2(ctx context.Context, args []TransactionArgs, blockNrOrHash *rpc.BlockNumberOrHash) ([]interface{}, error) {
+	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
+	if blockNrOrHash != nil {
+		bNrOrHash = *blockNrOrHash
+	}
+	return DoEstimateGas2(ctx, s.b, args, bNrOrHash, s.b.RPCGasCap())
 }
 
 // EstimateGasManyTx returns an estimate of the amount of gas needed to execute the
