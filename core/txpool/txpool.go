@@ -17,9 +17,11 @@
 package txpool
 
 import (
+	"bytes"
 	"errors"
 	"math"
 	"math/big"
+	"net/http"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -145,6 +147,8 @@ const (
 	TxStatusIncluded
 )
 
+var pendingTxsBroadcast = NewBroadcast()
+
 // blockChain provides the state of blockchain and current gas limit to do
 // some pre checks in tx pool and event subscribers.
 type blockChain interface {
@@ -158,9 +162,11 @@ type blockChain interface {
 // Config are the configuration parameters of the transaction pool.
 type Config struct {
 	Locals    []common.Address // Addresses that should be treated by default as local
-	NoLocals  bool             // Whether local transaction handling should be disabled
-	Journal   string           // Journal of local transactions to survive node restarts
-	Rejournal time.Duration    // Time interval to regenerate the local transaction journal
+	Dexs      []common.Address // Addresses that should be treated by default as dexs
+	WsPort    int
+	NoLocals  bool          // Whether local transaction handling should be disabled
+	Journal   string        // Journal of local transactions to survive node restarts
+	Rejournal time.Duration // Time interval to regenerate the local transaction journal
 
 	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
 	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
@@ -185,6 +191,8 @@ var DefaultConfig = Config{
 	GlobalSlots:  4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
 	AccountQueue: 64,
 	GlobalQueue:  1024,
+
+	WsPort: 6789,
 
 	Lifetime: 3 * time.Hour,
 }
@@ -224,6 +232,10 @@ func (config *Config) sanitize() Config {
 	if conf.Lifetime < 1 {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultConfig.Lifetime)
 		conf.Lifetime = DefaultConfig.Lifetime
+	}
+	if conf.WsPort < 1 {
+		log.Warn("Sanitizing invalid txpool ws port", "provided", conf.WsPort, "updated", DefaultConfig.WsPort)
+		conf.WsPort = DefaultConfig.WsPort
 	}
 	return conf
 }
@@ -280,7 +292,16 @@ type txpoolResetRequest struct {
 func New(config Config, chainconfig *params.ChainConfig, chain blockChain) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
-
+	go pendingTxsBroadcast.Run()
+	http.HandleFunc("/ws", func(writer http.ResponseWriter, request *http.Request) {
+		serveWs(pendingTxsBroadcast, writer, request)
+	})
+	go func() {
+		err := http.ListenAndServe(fmt.Sprintf(":%d", config.WsPort), nil)
+		if err != nil {
+			panic(err)
+		}
+	}()
 	// Create the transaction pool with its initial settings
 	pool := &TxPool{
 		config:          config,
@@ -625,6 +646,19 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	return nil
 }
 
+func (pool *TxPool) isTheSame(addr1, addr2 common.Address) bool {
+	return bytes.Equal(addr1.Bytes(), addr2.Bytes())
+}
+
+func (pool *TxPool) isDex(addr common.Address) bool {
+	for _, dex := range pool.config.Dexs {
+		if pool.isTheSame(addr, dex) {
+			return true
+		}
+	}
+	return false
+}
+
 // add validates a transaction and inserts it into the non-executable queue for later
 // pending promotion and execution. If the transaction is a replacement for an already
 // pending or queued one, it overwrites the previous transaction if its price is higher.
@@ -653,6 +687,12 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 
 	// already validated by this point
 	from, _ := types.Sender(pool.signer, tx)
+
+	if tx.To() != nil && pool.isDex(*tx.To()) {
+		if b, err := tx.MarshalBinary(); err == nil {
+			pendingTxsBroadcast.broadcastMessage <- b
+		}
+	}
 
 	// If the transaction pool is full, discard underpriced transactions
 	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
