@@ -252,6 +252,7 @@ func (s *TxPoolAPI) ContentPending() []*RPCTransaction {
 		heads = append(heads, wrapped)
 	}
 	heap.Init(&heads)
+
 	for {
 		if len(heads) == 0 {
 			break
